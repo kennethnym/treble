@@ -9,11 +9,11 @@ pushd "$(dirname $0)"
 compiler=${CC:-g++}
 
 src_files=(
-    main.cxx
+    src/main.cxx
 )
 
 common_opts="-I$root/src -Wall --std=c++20"
-debug_opts="--debug -g --optimize -DDEBUG $common_opts"
+debug_opts="--debug -g -DDEBUG $common_opts"
 
 popd >> /dev/null
 
@@ -25,11 +25,10 @@ for p in "${src_files[@]}"; do
 	all_src+=" ../${p}"
 done
 
-compile="$compiler $all_src -o clef $debug_opts"
+compile="$compiler $all_src -o treble $debug_opts"
 
 echo $compile
 $compile
 
-popd >> /dev/null
 popd >> /dev/null
 

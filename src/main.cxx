@@ -190,14 +190,24 @@ void read_code_section(Module &module, const std::vector<uint8_t> &bin,
 		size_t op_count = 0;
 		size_t ptr = header;
 		while (op_code != END_MARKER) {
-			op_count++;
-			op_code = bin[++ptr];
+			switch (static_cast<Instruction::OpCode>(op_code)) {
+			case Instruction::OpCode::i32_const:
+				op_count++;
+				ptr += 2;
+				op_code = bin[ptr];
+				break;
+
+			default:
+				op_count++;
+				op_code = bin[++ptr];
+				break;
+			}
 		}
 
 		func.body = static_cast<Instruction *>(
 			std::malloc((op_count + 1) * sizeof(Instruction)));
 
-		for (size_t j = 0; j < op_count; ++j) {
+		for (size_t j = 0; j < op_count + 1; ++j) {
 			auto op_code = static_cast<Instruction::OpCode>(bin[header++]);
 			func.body[j].op_code = op_code;
 			switch (op_code) {
@@ -209,9 +219,9 @@ void read_code_section(Module &module, const std::vector<uint8_t> &bin,
 				break;
 			}
 		}
-
-		func.body[op_count].op_code = Instruction::OpCode::end;
 	}
+
+	std::cout << "code section finished" << std::endl;
 }
 
 ModuleInstance instantiate_module(const Module &module) {
@@ -267,6 +277,7 @@ void print_stack(StackEntry *stack, int64_t ptr) {
 		std::cout << "top of stack:" << std::endl;
 		std::cout << "    type: Value" << std::endl;
 		std::cout << "    operand: " << entry.value.operand << std::endl;
+		break;
 	default:
 		break;
 	}
@@ -289,19 +300,39 @@ void execute_module_instance(ModuleInstance &instance) {
 
 		switch (instruction.op_code) {
 		case Instruction::OpCode::i32_const: {
+			std::cout << "i32.const" << std::endl;
 			StackEntry &entry = stack[++ptr];
 			entry.type = StackEntry::Type::Value;
 			entry.value.operand = instruction.args.literal;
 			break;
 		}
 
+		case Instruction::OpCode::i32_add: {
+			std::cout << "i32.add" << std::endl;
+			StackEntry &entry_c2 = stack[ptr--];
+			StackEntry &entry_c1 = stack[ptr--];
+			const auto result = entry_c1.value.operand + entry_c2.value.operand;
+
+			StackEntry &entry_c = stack[++ptr];
+			entry_c.type = StackEntry::Type::Value;
+			entry_c.value.operand = result;
+			break;
+		}
+
 		case Instruction::OpCode::drop: {
+			std::cout << "i32.drop" << std::endl;
 			ptr--;
 			break;
 		}
 
 		case Instruction::OpCode::end:
+			std::cout << "end" << std::endl;
 			return;
+
+		default:
+			std::cout << "unknown op code: "
+					  << +static_cast<uint8_t>(instruction.op_code)
+					  << std::endl;
 		}
 
 		print_stack(stack, ptr);

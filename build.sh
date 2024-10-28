@@ -10,6 +10,8 @@ compiler=${CC:-g++}
 
 src_files=(
     src/main.cxx
+	src/module.cxx
+	src/runtime.cxx
 )
 
 common_opts="-I$root/src -Wall --std=c++20"

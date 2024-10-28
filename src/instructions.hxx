@@ -1,3 +1,6 @@
+#ifndef __TREBLE__INSTRUCTIONS_HXX__
+#define __TREBLE__INSTRUCTIONS_HXX__
+
 #include <cstdint>
 
 struct Instruction {
@@ -13,3 +16,5 @@ struct Instruction {
 		uint32_t literal;
 	} args;
 };
+
+#endif

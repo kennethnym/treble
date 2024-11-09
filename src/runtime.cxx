@@ -1,5 +1,9 @@
 #include "runtime.hxx"
+#include "instructions.hxx"
+#include <cstdint>
+#include <filesystem>
 #include <iostream>
+#include <type_traits>
 
 struct StackEntry {
 	enum class Type { Value, Label, Activations };
@@ -36,51 +40,136 @@ void Treble::execute_module_instance(ModuleInstance &instance) {
 		instance.module->funcs[instance.module->start->func_index];
 
 	StackEntry stack[65536];
-	int64_t ptr = -1;
+	int64_t stack_ptr = -1;
 
 	size_t header = 0;
-	while (true) {
+	uint block_level = 0;
+	bool is_finished = false;
+	while (!is_finished) {
 		Instruction &instruction = start_func.body[header];
 
 		switch (instruction.op_code) {
 		case Instruction::OpCode::i32_const: {
 			std::cout << "i32.const" << std::endl;
-			StackEntry &entry = stack[++ptr];
+			StackEntry &entry = stack[++stack_ptr];
 			entry.type = StackEntry::Type::Value;
 			entry.value.operand = instruction.args.literal;
+
+			header++;
 			break;
 		}
 
 		case Instruction::OpCode::i32_add: {
 			std::cout << "i32.add" << std::endl;
-			StackEntry &entry_c2 = stack[ptr--];
-			StackEntry &entry_c1 = stack[ptr--];
+			StackEntry &entry_c2 = stack[stack_ptr--];
+			StackEntry &entry_c1 = stack[stack_ptr--];
 			const auto result = entry_c1.value.operand + entry_c2.value.operand;
 
-			StackEntry &entry_c = stack[++ptr];
+			StackEntry &entry_c = stack[++stack_ptr];
 			entry_c.type = StackEntry::Type::Value;
 			entry_c.value.operand = result;
+
+			header++;
+			break;
+		}
+
+		case Instruction::OpCode::i32_sub: {
+			std::cout << "i32.sub" << std::endl;
+			StackEntry &entry_c2 = stack[stack_ptr--];
+			StackEntry &entry_c1 = stack[stack_ptr--];
+			const auto result = entry_c1.value.operand - entry_c2.value.operand;
+
+			StackEntry &entry_c = stack[++stack_ptr];
+			entry_c.type = StackEntry::Type::Value;
+			entry_c.value.operand = result;
+
+			header++;
+			break;
+		}
+
+		case Instruction::OpCode::i32_mul: {
+			std::cout << "i32.mul" << std::endl;
+			StackEntry &entry_c2 = stack[stack_ptr--];
+			StackEntry &entry_c1 = stack[stack_ptr--];
+			const auto result = entry_c1.value.operand * entry_c2.value.operand;
+
+			StackEntry &entry_c = stack[++stack_ptr];
+			entry_c.type = StackEntry::Type::Value;
+			entry_c.value.operand = result;
+
+			header++;
+			break;
+		}
+
+		case Instruction::OpCode::i32_div_u: {
+			std::cout << "i32.div_u" << std::endl;
+			StackEntry &entry_c2 = stack[stack_ptr--];
+			StackEntry &entry_c1 = stack[stack_ptr--];
+			const uint32_t result =
+				entry_c1.value.operand / entry_c2.value.operand;
+
+			StackEntry &entry_c = stack[++stack_ptr];
+			entry_c.type = StackEntry::Type::Value;
+			entry_c.value.operand = result;
+
+			header++;
 			break;
 		}
 
 		case Instruction::OpCode::drop: {
 			std::cout << "i32.drop" << std::endl;
-			ptr--;
+			stack_ptr--;
+			header++;
+			break;
+		}
+
+		case Instruction::OpCode::if_: {
+			std::cout << "if" << std::endl;
+			StackEntry &c = stack[stack_ptr--];
+			if (c.value.operand) {
+				std::cout << "instr_1_offset "
+						  << instruction.args.if_branch.instr_1_offset
+						  << std::endl;
+				header += instruction.args.if_branch.instr_1_offset;
+			} else {
+				header += instruction.args.if_branch.instr_2_offset;
+				std::cout << "instr_2_offset "
+						  << instruction.args.if_branch.instr_2_offset
+						  << std::endl;
+			}
+			block_level++;
+			break;
+		}
+
+		case Instruction::OpCode::else_: {
+			std::cout << "else"
+					  << instruction.args.else_branch.end_marker_offset
+					  << std::endl;
+
+			header += instruction.args.else_branch.end_marker_offset;
 			break;
 		}
 
 		case Instruction::OpCode::end:
 			std::cout << "end" << std::endl;
-			return;
+			if (block_level == 0) {
+				is_finished = true;
+			} else {
+				block_level--;
+			}
+
+			header++;
+			break;
 
 		default:
 			std::cout << "unknown op code: "
 					  << +static_cast<uint8_t>(instruction.op_code)
 					  << std::endl;
+
+			header++;
+			break;
 		}
 
-		print_stack(stack, ptr);
-
-		header++;
+		print_stack(stack, stack_ptr);
 	}
 }

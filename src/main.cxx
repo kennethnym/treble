@@ -23,8 +23,12 @@ int main(int argc, char *argv[]) {
 
 	std::optional<Treble::Module> module = Treble::parse_binary(bin);
 
+	std::cout << "binary parsed" << std::endl;
+
 	Treble::describe_module(*module);
 	Treble::ModuleInstance module_instance = instantiate_module(*module);
+
+	std::cout << "module instantiated. executing" << std::endl;
 
 	execute_module_instance(module_instance);
 }

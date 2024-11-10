@@ -11,6 +11,9 @@
 namespace Treble {
 
 struct BlockBegin {
+	/**
+	 * the index of the instruction that started this code block
+	 */
 	size_t instr_pos;
 };
 
@@ -33,10 +36,8 @@ uint32_t decode_u32(const std::vector<uint8_t> &bin, size_t &header) {
 	size_t shift = 0;
 	while (true) {
 		const auto b = bin[header++];
-		std::cout << "header " << header << std::endl;
 		result |= ((b & 0b01111111) << shift);
 		if ((b & 0b10000000) == 0) {
-			std::cout << "result " << result << std::endl;
 			break;
 		}
 		shift += 7;
@@ -57,27 +58,27 @@ void read_code_section(Treble::Module &module, const std::vector<uint8_t> &bin,
 
 		uint8_t op_code = bin[header];
 		size_t op_count = 0;
-		size_t ptr = header;
+
+		// first, count the number of instructions in this code setion.
 
 		uint block_level = 0;
+		// this is used for counting, pointing to which instruction we are at
+		size_t count_ptr = header;
 		bool end_reached = false;
 		while (!end_reached) {
 			switch (static_cast<Instruction::OpCode>(op_code)) {
 			case Instruction::OpCode::i32_const:
 				op_count++;
-				std::cout << "ptr before " << ptr << std::endl;
-				ptr++;
-				ptr += varint_size(bin, ptr);
-				std::cout << "ptr after " << ptr << std::endl;
-				op_code = bin[ptr];
-				std::cout << "op code after " << +op_code << std::endl;
+				count_ptr++;
+				count_ptr += varint_size(bin, count_ptr);
+				op_code = bin[count_ptr];
 				break;
 
 			case Instruction::OpCode::if_:
 				block_level++;
 				op_count++;
-				ptr += 2;
-				op_code = bin[ptr];
+				count_ptr += 2;
+				op_code = bin[count_ptr];
 				break;
 
 			case Instruction::OpCode::end:
@@ -91,16 +92,15 @@ void read_code_section(Treble::Module &module, const std::vector<uint8_t> &bin,
 
 			default:
 				op_count++;
-				op_code = bin[++ptr];
+				op_code = bin[++count_ptr];
 				break;
 			}
 		}
 
-		std::cout << "op count " << op_count << std::endl;
-
 		func.body = static_cast<Instruction *>(
 			std::malloc((op_count) * sizeof(Instruction)));
 
+		// this is used to keep track of block nesting
 		std::stack<BlockBegin> block_stack;
 
 		for (size_t j = 0; j < op_count; ++j) {
@@ -113,7 +113,11 @@ void read_code_section(Treble::Module &module, const std::vector<uint8_t> &bin,
 
 			case Instruction::OpCode::if_:
 				func.body[j].args.if_branch.block_type = nullptr;
+
+				// TODO: add support for blocktype
+				// skip over the blocktype byte, not handling blocktype rn
 				header++;
+
 				func.body[j].args.if_branch.instr_1_offset = 1;
 				block_stack.push({.instr_pos = j});
 				break;
@@ -148,12 +152,8 @@ void read_code_section(Treble::Module &module, const std::vector<uint8_t> &bin,
 			default:
 				break;
 			}
-
-			std::cout << "header " << header << std::endl;
 		}
 	}
-
-	std::cout << "code section finished: " << header << std::endl;
 }
 
 void read_start_section(Treble::Module &module, const std::vector<uint8_t> &bin,
@@ -266,7 +266,6 @@ std::optional<Treble::Module> parse_binary(const std::vector<uint8_t> &bin) {
 
 		case SectionType::Code:
 			read_code_section(*module, bin, ++header);
-			std::cout << "header after code section: " << header << std::endl;
 			break;
 
 		default:

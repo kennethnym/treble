@@ -1,9 +1,7 @@
 #include "runtime.hxx"
 #include "instructions.hxx"
 #include <cstdint>
-#include <filesystem>
 #include <iostream>
-#include <type_traits>
 
 struct StackEntry {
 	enum class Type { Value, Label, Activations };
@@ -36,15 +34,22 @@ void Treble::execute_module_instance(ModuleInstance &instance) {
 		return;
 	}
 
+	// the main function for the wasm module
 	const Function &start_func =
 		instance.module->funcs[instance.module->start->func_index];
 
+	// the program stack
 	StackEntry stack[65536];
-	int64_t stack_ptr = -1;
 
+	// points to the top-most entry in the current execution stack.
+	int64_t stack_ptr = -1;
+	// points to the current instruction being executed.
 	size_t header = 0;
+	// keep track of block nesting levels
 	uint block_level = 0;
+	// whether the execution is finished.
 	bool is_finished = false;
+
 	while (!is_finished) {
 		Instruction &instruction = start_func.body[header];
 
@@ -127,31 +132,23 @@ void Treble::execute_module_instance(ModuleInstance &instance) {
 			std::cout << "if" << std::endl;
 			StackEntry &c = stack[stack_ptr--];
 			if (c.value.operand) {
-				std::cout << "instr_1_offset "
-						  << instruction.args.if_branch.instr_1_offset
-						  << std::endl;
 				header += instruction.args.if_branch.instr_1_offset;
 			} else {
 				header += instruction.args.if_branch.instr_2_offset;
-				std::cout << "instr_2_offset "
-						  << instruction.args.if_branch.instr_2_offset
-						  << std::endl;
 			}
 			block_level++;
 			break;
 		}
 
 		case Instruction::OpCode::else_: {
-			std::cout << "else"
-					  << instruction.args.else_branch.end_marker_offset
-					  << std::endl;
-
 			header += instruction.args.else_branch.end_marker_offset;
 			break;
 		}
 
 		case Instruction::OpCode::end:
-			std::cout << "end" << std::endl;
+			// end marker encountered
+			// if inside a block, exit the block
+			// otherwise (when block_level is 0) we are done
 			if (block_level == 0) {
 				is_finished = true;
 			} else {

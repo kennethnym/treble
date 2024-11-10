@@ -10,7 +10,7 @@ cat > .clangd <<- EOF
 CompileFlags:
   Add:
     - -I$root/src
-      - --std=c++20
-      - -Wall
+    - -std=c++20
+    - -Wall
 EOF
 

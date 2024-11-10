@@ -108,7 +108,7 @@ void read_code_section(Treble::Module &module, const std::vector<uint8_t> &bin,
 			func.body[j].op_code = op_code;
 			switch (op_code) {
 			case Instruction::OpCode::i32_const:
-				func.body[j].args.literal = decode_u32(bin, header);
+				func.body[j].args.i32 = decode_u32(bin, header);
 				break;
 
 			case Instruction::OpCode::if_:

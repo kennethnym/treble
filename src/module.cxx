@@ -2,6 +2,7 @@
 #include "instructions.hxx"
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <optional>
 #include <stack>
@@ -19,7 +20,6 @@ struct BlockBegin {
 
 size_t varint_size(const std::vector<uint8_t> &bin, size_t header) {
 	size_t size = 0;
-	size_t shift = 0;
 	size_t i = header;
 	while (true) {
 		const auto b = bin[i++];
@@ -33,6 +33,20 @@ size_t varint_size(const std::vector<uint8_t> &bin, size_t header) {
 
 uint32_t decode_u32(const std::vector<uint8_t> &bin, size_t &header) {
 	uint32_t result = 0;
+	size_t shift = 0;
+	while (true) {
+		const auto b = bin[header++];
+		result |= ((b & 0b01111111) << shift);
+		if ((b & 0b10000000) == 0) {
+			break;
+		}
+		shift += 7;
+	}
+	return result;
+}
+
+uint64_t decode_u64(const std::vector<uint8_t> &bin, size_t &header) {
+	uint64_t result = 0;
 	size_t shift = 0;
 	while (true) {
 		const auto b = bin[header++];
@@ -67,10 +81,17 @@ void read_code_section(Treble::Module &module, const std::vector<uint8_t> &bin,
 		bool end_reached = false;
 		while (!end_reached) {
 			switch (static_cast<Instruction::OpCode>(op_code)) {
+			case Instruction::OpCode::i64_const:
 			case Instruction::OpCode::i32_const:
 				op_count++;
 				count_ptr++;
 				count_ptr += varint_size(bin, count_ptr);
+				op_code = bin[count_ptr];
+				break;
+
+			case Instruction::OpCode::f32_const:
+				op_count++;
+				count_ptr += 5;
 				op_code = bin[count_ptr];
 				break;
 
@@ -104,15 +125,26 @@ void read_code_section(Treble::Module &module, const std::vector<uint8_t> &bin,
 		std::stack<BlockBegin> block_stack;
 
 		for (size_t j = 0; j < op_count; ++j) {
+			Instruction &instr = func.body[j];
+
 			auto op_code = static_cast<Instruction::OpCode>(bin[header++]);
-			func.body[j].op_code = op_code;
+			instr.op_code = op_code;
 			switch (op_code) {
 			case Instruction::OpCode::i32_const:
-				func.body[j].args.i32 = decode_u32(bin, header);
+				instr.args.i32 = decode_u32(bin, header);
+				break;
+
+			case Instruction::OpCode::i64_const:
+				instr.args.i64 = decode_u64(bin, header);
+				break;
+
+			case Instruction::OpCode::f32_const:
+				std::memcpy(&instr.args.f32, &bin[header], 4);
+				header += 4;
 				break;
 
 			case Instruction::OpCode::if_:
-				func.body[j].args.if_branch.block_type = nullptr;
+				instr.args.if_branch.block_type = nullptr;
 
 				// TODO: add support for blocktype
 				// skip over the blocktype byte, not handling blocktype rn

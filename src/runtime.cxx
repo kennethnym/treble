@@ -4,11 +4,321 @@
 #include <cstdint>
 #include <iostream>
 
+#define BINARY_OPERATION(dtype, instr_name, stack_type, operator)              \
+	case Instruction::OpCode::instr_name: {                                    \
+		StackEntry &entry_c2 = stack[stack_ptr--];                             \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+		const auto result = entry_c1.value.dtype##_operand operator entry_c2   \
+								.value.dtype##_operand;                        \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::stack_type;                           \
+		entry_c.value.dtype##_operand = result;                                \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}
+
+#define SIGNED_BINARY_OPERATION(dtype, instr_name, signed_type,                \
+								stack_type, operator)                          \
+	case Instruction::OpCode::instr_name: {                                    \
+		StackEntry &entry_c2 = stack[stack_ptr--];                             \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+		const auto result =                                                    \
+			static_cast<signed_type>(entry_c1.value.dtype##_operand)           \
+			operator static_cast<signed_type>(entry_c2.value.dtype##_operand); \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::stack_type;                           \
+		entry_c.value.dtype##_operand = result;                                \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}
+
+#define INTEGER_INSTRUCTIONS(dtype, bit_width, signed_type, stack_type)        \
+	case Instruction::OpCode::dtype##_const: {                                 \
+		std::cout << #dtype ".const" << std::endl;                             \
+		StackEntry &entry = stack[++stack_ptr];                                \
+		entry.type = StackEntry::Type::stack_type;                             \
+		entry.value.dtype##_operand = instruction.args.dtype;                  \
+		header++;                                                              \
+		break;                                                                 \
+	}                                                                          \
+	case Instruction::OpCode::dtype##_eqz: {                                   \
+		std::cout << #dtype ".eqz" << std::endl;                               \
+		StackEntry &entry_c1 = stack[stack_ptr];                               \
+		entry_c1.type = StackEntry::Type::I32Value;                            \
+		entry_c1.value.i32_operand =                                           \
+			entry_c1.value.dtype##_operand == 0 ? 1 : 0;                       \
+		header++;                                                              \
+		break;                                                                 \
+	};                                                                         \
+	case Instruction::OpCode::dtype##_eq: {                                    \
+		std::cout << #dtype ".eq" << std::endl;                                \
+                                                                               \
+		StackEntry &entry_c2 = stack[stack_ptr--];                             \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::I32Value;                             \
+		entry_c.value.i32_operand =                                            \
+			entry_c1.value.dtype##_operand == entry_c2.value.dtype##_operand   \
+				? 1                                                            \
+				: 0;                                                           \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}                                                                          \
+	case Instruction::OpCode::dtype##_ne: {                                    \
+		std::cout << #dtype ".ne" << std::endl;                                \
+                                                                               \
+		StackEntry &entry_c2 = stack[stack_ptr--];                             \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::I32Value;                             \
+		entry_c.value.i32_operand =                                            \
+			entry_c1.value.dtype##_operand == entry_c2.value.dtype##_operand   \
+				? 0                                                            \
+				: 1;                                                           \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}                                                                          \
+	case Instruction::OpCode::dtype##_lt_u: {                                  \
+		std::cout << #dtype ".lt_u" << std::endl;                              \
+                                                                               \
+		StackEntry &entry_c2 = stack[stack_ptr--];                             \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::I32Value;                             \
+		entry_c.value.i32_operand =                                            \
+			entry_c1.value.dtype##_operand < entry_c2.value.dtype##_operand    \
+				? 1                                                            \
+				: 0;                                                           \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}                                                                          \
+	case Instruction::OpCode::dtype##_lt_s: {                                  \
+		std::cout << #dtype ".lt_u" << std::endl;                              \
+                                                                               \
+		StackEntry &entry_c2 = stack[stack_ptr--];                             \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::I32Value;                             \
+		entry_c.value.i32_operand =                                            \
+			static_cast<int32_t>(entry_c1.value.dtype##_operand) <             \
+					static_cast<int32_t>(entry_c2.value.dtype##_operand)       \
+				? 1                                                            \
+				: 0;                                                           \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}                                                                          \
+	case Instruction::OpCode::dtype##_gt_u: {                                  \
+		std::cout << #dtype ".gt_u" << std::endl;                              \
+                                                                               \
+		StackEntry &entry_c2 = stack[stack_ptr--];                             \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::I32Value;                             \
+		entry_c.value.i32_operand =                                            \
+			entry_c1.value.dtype##_operand > entry_c2.value.dtype##_operand    \
+				? 1                                                            \
+				: 0;                                                           \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}                                                                          \
+	case Instruction::OpCode::dtype##_gt_s: {                                  \
+		std::cout << #dtype ".gt_u" << std::endl;                              \
+                                                                               \
+		StackEntry &entry_c2 = stack[stack_ptr--];                             \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::I32Value;                             \
+		entry_c.value.i32_operand =                                            \
+			static_cast<signed_type>(entry_c1.value.dtype##_operand) >         \
+					static_cast<signed_type>(entry_c2.value.dtype##_operand)   \
+				? 1                                                            \
+				: 0;                                                           \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}                                                                          \
+	case Instruction::OpCode::dtype##_le_u: {                                  \
+		std::cout << #dtype ".le_u" << std::endl;                              \
+                                                                               \
+		StackEntry &entry_c2 = stack[stack_ptr--];                             \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::I32Value;                             \
+		entry_c.value.i32_operand =                                            \
+			entry_c1.value.dtype##_operand <= entry_c2.value.dtype##_operand   \
+				? 1                                                            \
+				: 0;                                                           \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}                                                                          \
+	case Instruction::OpCode::dtype##_ge_u: {                                  \
+		std::cout << #dtype ".ge_u" << std::endl;                              \
+                                                                               \
+		StackEntry &entry_c2 = stack[stack_ptr--];                             \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::I32Value;                             \
+		entry_c.value.i32_operand =                                            \
+			entry_c1.value.dtype##_operand >= entry_c2.value.dtype##_operand   \
+				? 1                                                            \
+				: 0;                                                           \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}                                                                          \
+	case Instruction::OpCode::dtype##_ge_s: {                                  \
+		std::cout << #dtype ".le_s" << std::endl;                              \
+                                                                               \
+		StackEntry &entry_c2 = stack[stack_ptr--];                             \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::I32Value;                             \
+		entry_c.value.i32_operand =                                            \
+			static_cast<signed_type>(entry_c1.value.dtype##_operand) >=        \
+					static_cast<signed_type>(entry_c2.value.dtype##_operand)   \
+				? 1                                                            \
+				: 0;                                                           \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}                                                                          \
+                                                                               \
+		BINARY_OPERATION(dtype, dtype##_add, stack_type, +)                    \
+		BINARY_OPERATION(dtype, dtype##_sub, stack_type, -)                    \
+		BINARY_OPERATION(dtype, dtype##_mul, stack_type, *)                    \
+                                                                               \
+		BINARY_OPERATION(dtype, dtype##_div_u, stack_type, /)                  \
+		SIGNED_BINARY_OPERATION(dtype, dtype##_div_s, signed_type, stack_type, \
+								/)                                             \
+                                                                               \
+		BINARY_OPERATION(dtype, dtype##_rem_u, stack_type, %)                  \
+		SIGNED_BINARY_OPERATION(dtype, dtype##_rem_s, int32_t, stack_type, %)  \
+                                                                               \
+		BINARY_OPERATION(dtype, dtype##_and, stack_type, &);                   \
+		BINARY_OPERATION(dtype, dtype##_or, stack_type, |);                    \
+		BINARY_OPERATION(dtype, dtype##_xor, stack_type, ^);                   \
+                                                                               \
+	case Instruction::OpCode::dtype##_shl: {                                   \
+		StackEntry &entry_c2 = stack[stack_ptr--];                             \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+                                                                               \
+		const auto k = entry_c2.value.dtype##_operand % bit_width;             \
+		const auto result = (entry_c1.value.dtype##_operand << k) % bit_width; \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::stack_type;                           \
+		entry_c.value.dtype##_operand = result;                                \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}                                                                          \
+	case Instruction::OpCode::dtype##_shr_s:                                   \
+	case Instruction::OpCode::dtype##_shr_u: {                                 \
+		StackEntry &entry_c2 = stack[stack_ptr--];                             \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+                                                                               \
+		const auto k = entry_c2.value.dtype##_operand % 32;                    \
+		const auto result = entry_c1.value.dtype##_operand >> k;               \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::stack_type;                           \
+		entry_c.value.dtype##_operand = result;                                \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}                                                                          \
+	case Instruction::OpCode::dtype##_rotl: {                                  \
+		StackEntry &entry_c2 = stack[stack_ptr--];                             \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+                                                                               \
+		const auto k = entry_c2.value.dtype##_operand % bit_width;             \
+		const auto result =                                                    \
+			(entry_c1.value.dtype##_operand << k) |                            \
+			(entry_c1.value.dtype##_operand >> (bit_width - k));               \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::stack_type;                           \
+		entry_c.value.dtype##_operand = result;                                \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}                                                                          \
+	case Instruction::OpCode::dtype##_rotr: {                                  \
+		StackEntry &entry_c2 = stack[stack_ptr--];                             \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+                                                                               \
+		const auto k = entry_c2.value.dtype##_operand % bit_width;             \
+		const auto result =                                                    \
+			(entry_c1.value.dtype##_operand << (bit_width - k)) |              \
+			(entry_c1.value.dtype##_operand >> (k));                           \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::stack_type;                           \
+		entry_c.value.dtype##_operand = result;                                \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}                                                                          \
+	case Instruction::OpCode::dtype##_clz: {                                   \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::I32Value;                             \
+		entry_c.value.dtype##_operand =                                        \
+			std::countr_zero(entry_c1.value.dtype##_operand);                  \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}                                                                          \
+	case Instruction::OpCode::dtype##_ctz: {                                   \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::I32Value;                             \
+		entry_c.value.dtype##_operand =                                        \
+			std::countl_zero(entry_c1.value.dtype##_operand);                  \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}                                                                          \
+	case Instruction::OpCode::dtype##_popcnt: {                                \
+		StackEntry &entry_c1 = stack[stack_ptr--];                             \
+                                                                               \
+		StackEntry &entry_c = stack[++stack_ptr];                              \
+		entry_c.type = StackEntry::Type::stack_type;                           \
+		entry_c.value.dtype##_operand =                                        \
+			std::popcount(entry_c1.value.dtype##_operand);                     \
+                                                                               \
+		header++;                                                              \
+		break;                                                                 \
+	}
+
 struct StackEntry {
-	enum class Type { Value, Label, Activations };
+	enum class Type { I32Value, I64Value, F32Value, Label, Activations };
 	Type type;
 	union {
-		uint32_t operand;
+		uint32_t i32_operand;
+		uint64_t i64_operand;
+		float f32_operand;
 	} value;
 };
 
@@ -20,10 +330,10 @@ void print_stack(StackEntry *stack, int64_t ptr) {
 
 	const StackEntry &entry = stack[ptr];
 	switch (entry.type) {
-	case StackEntry::Type::Value:
+	case StackEntry::Type::I32Value:
 		std::cout << "top of stack:" << std::endl;
 		std::cout << "    type: Value" << std::endl;
-		std::cout << "    operand: " << entry.value.operand << std::endl;
+		std::cout << "    operand: " << entry.value.i32_operand << std::endl;
 		break;
 	default:
 		break;
@@ -55,433 +365,14 @@ void Treble::execute_module_instance(ModuleInstance &instance) {
 		Instruction &instruction = start_func.body[header];
 
 		switch (instruction.op_code) {
-		case Instruction::OpCode::i32_const: {
-			std::cout << "i32.const" << std::endl;
+			INTEGER_INSTRUCTIONS(i32, 32, int32_t, I32Value);
+			INTEGER_INSTRUCTIONS(i64, 64, int64_t, I64Value);
+
+		case Instruction::OpCode::f32_const: {
+			std::cout << "f32.const" << std::endl;
 			StackEntry &entry = stack[++stack_ptr];
-			entry.type = StackEntry::Type::Value;
-			entry.value.operand = instruction.args.i32;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_eqz: {
-			// NOTE: popping and pushing should be equivalent to
-			// writing the result back to itself
-			// this should work just fine but making a note as a reminder
-
-			std::cout << "i32.eqz" << std::endl;
-
-			StackEntry &entry_c1 = stack[stack_ptr];
-			entry_c1.value.operand = entry_c1.value.operand == 0 ? 1 : 0;
-			header++;
-			break;
-		};
-
-		case Instruction::OpCode::i32_eq: {
-			std::cout << "i32.eq" << std::endl;
-
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand =
-				entry_c1.value.operand == entry_c2.value.operand ? 1 : 0;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_ne: {
-			std::cout << "i32.ne" << std::endl;
-
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand =
-				entry_c1.value.operand == entry_c2.value.operand ? 0 : 1;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_lt_u: {
-			std::cout << "i32.lt_u" << std::endl;
-
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand =
-				entry_c1.value.operand < entry_c2.value.operand ? 1 : 0;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_lt_s: {
-			std::cout << "i32.lt_u" << std::endl;
-
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand =
-				static_cast<int32_t>(entry_c1.value.operand) <
-						static_cast<int32_t>(entry_c2.value.operand)
-					? 1
-					: 0;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_gt_u: {
-			std::cout << "i32.gt_u" << std::endl;
-
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand =
-				entry_c1.value.operand > entry_c2.value.operand ? 1 : 0;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_gt_s: {
-			std::cout << "i32.gt_u" << std::endl;
-
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand =
-				static_cast<int32_t>(entry_c1.value.operand) >
-						static_cast<int32_t>(entry_c2.value.operand)
-					? 1
-					: 0;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_le_u: {
-			std::cout << "i32.le_u" << std::endl;
-
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand =
-				entry_c1.value.operand <= entry_c2.value.operand ? 1 : 0;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_le_s: {
-			std::cout << "i32.le_s" << std::endl;
-
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand =
-				static_cast<int32_t>(entry_c1.value.operand) <=
-						static_cast<int32_t>(entry_c2.value.operand)
-					? 1
-					: 0;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_ge_u: {
-			std::cout << "i32.ge_u" << std::endl;
-
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand =
-				entry_c1.value.operand >= entry_c2.value.operand ? 1 : 0;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_ge_s: {
-			std::cout << "i32.le_s" << std::endl;
-
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand =
-				static_cast<int32_t>(entry_c1.value.operand) >=
-						static_cast<int32_t>(entry_c2.value.operand)
-					? 1
-					: 0;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_add: {
-			std::cout << "i32.add" << std::endl;
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-			const auto result = entry_c1.value.operand + entry_c2.value.operand;
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand = result;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_sub: {
-			std::cout << "i32.sub" << std::endl;
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-			const auto result = entry_c1.value.operand - entry_c2.value.operand;
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand = result;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_mul: {
-			std::cout << "i32.mul" << std::endl;
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-			const auto result = entry_c1.value.operand * entry_c2.value.operand;
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand = result;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_div_u: {
-			std::cout << "i32.div_u" << std::endl;
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-			const uint32_t result =
-				entry_c1.value.operand / entry_c2.value.operand;
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand = result;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_div_s: {
-			std::cout << "i32.div_s" << std::endl;
-
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-			const int32_t result =
-				static_cast<int32_t>(entry_c1.value.operand) /
-				static_cast<int32_t>(entry_c2.value.operand);
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand = result;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_rem_u: {
-			std::cout << "i32.rem_u" << std::endl;
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-			const uint32_t result =
-				entry_c1.value.operand % entry_c2.value.operand;
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand = result;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_rem_s: {
-			std::cout << "i32.div_s" << std::endl;
-
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-			const int32_t result =
-				static_cast<int32_t>(entry_c1.value.operand) %
-				static_cast<int32_t>(entry_c2.value.operand);
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand = result;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_and: {
-			std::cout << "i32_and" << std::endl;
-
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-			const auto result = entry_c1.value.operand & entry_c2.value.operand;
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand = result;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_or: {
-			std::cout << "i32_or" << std::endl;
-
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-			const auto result = entry_c1.value.operand | entry_c2.value.operand;
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand = result;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_xor: {
-			std::cout << "i32_or" << std::endl;
-
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-			const auto result = entry_c1.value.operand ^ entry_c2.value.operand;
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand = result;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_shl: {
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-
-			const auto k = entry_c2.value.operand % 32;
-			const auto result = (entry_c1.value.operand << k) % 32;
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand = result;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_shr_s:
-		case Instruction::OpCode::i32_shr_u: {
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-
-			const auto k = entry_c2.value.operand % 32;
-			const auto result = entry_c1.value.operand >> k;
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand = result;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_rotl: {
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-
-			const auto k = entry_c2.value.operand % 32;
-			const auto result = (entry_c1.value.operand << k) |
-								(entry_c1.value.operand >> (32 - k));
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand = result;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_rotr: {
-			StackEntry &entry_c2 = stack[stack_ptr--];
-			StackEntry &entry_c1 = stack[stack_ptr--];
-
-			const auto k = entry_c2.value.operand % 32;
-			const auto result = (entry_c1.value.operand << (32 - k)) |
-								(entry_c1.value.operand >> (k));
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand = result;
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_clz: {
-			StackEntry &entry_c1 = stack[stack_ptr--];
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand = std::countr_zero(entry_c1.value.operand);
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_ctz: {
-			StackEntry &entry_c1 = stack[stack_ptr--];
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand = std::countl_zero(entry_c1.value.operand);
-
-			header++;
-			break;
-		}
-
-		case Instruction::OpCode::i32_popcnt: {
-			StackEntry &entry_c1 = stack[stack_ptr--];
-
-			StackEntry &entry_c = stack[++stack_ptr];
-			entry_c.type = StackEntry::Type::Value;
-			entry_c.value.operand = std::popcount(entry_c1.value.operand);
+			entry.type = StackEntry::Type::F32Value;
+			entry.value.f32_operand = instruction.args.f32;
 
 			header++;
 			break;
@@ -489,7 +380,8 @@ void Treble::execute_module_instance(ModuleInstance &instance) {
 
 		case Instruction::OpCode::i32_wrap_i64: {
 			StackEntry &entry_c = stack[stack_ptr];
-			entry_c.value.operand = entry_c.value.operand % 4294967296;
+			entry_c.type = StackEntry::Type::I32Value;
+			entry_c.value.i32_operand = entry_c.value.i64_operand % 4294967296;
 			header++;
 			break;
 		}
@@ -504,7 +396,7 @@ void Treble::execute_module_instance(ModuleInstance &instance) {
 		case Instruction::OpCode::if_: {
 			std::cout << "if" << std::endl;
 			StackEntry &c = stack[stack_ptr--];
-			if (c.value.operand) {
+			if (c.value.i32_operand) {
 				header += instruction.args.if_branch.instr_1_offset;
 			} else {
 				header += instruction.args.if_branch.instr_2_offset;
